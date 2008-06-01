@@ -1,3 +1,11 @@
+// $Id: sc_main.cpp,v 1.2 2008-06-01 00:09:10 antanguay Exp $ -*- SystemC -*-
+// DESCRIPTION: Verilator Example: Top level main for invoking SystemC model
+//
+// Copyright 2003-2008 by Wilson Snyder. This program is free software; you can
+// redistribute it and/or modify it under the terms of either the GNU
+// General Public License or the Perl Artistic License.
+//====================================================================
+
 //////////////////////////////////////////////////////////////////////
 ////                                                              ////
 ////  File name "sc_main.cpp"                                     ////
