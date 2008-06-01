@@ -35,6 +35,7 @@
 ////                                                              ////
 //////////////////////////////////////////////////////////////////////
 
+`include "defines.v"
 
 module generic_fifo(
 
@@ -165,6 +166,7 @@ generate
                .rclk (rclk),
                .rrst_n (rrst_n),
                .ren (mem_ren),
+               .roen (ren),
                .raddr (mem_raddr),
                .rdata (rdata)
                );
