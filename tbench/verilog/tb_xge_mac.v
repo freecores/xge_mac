@@ -62,14 +62,16 @@ reg           pkt_rx_ren;
 reg  [63:0]   pkt_tx_data;
 reg           pkt_tx_val;
 reg           pkt_tx_sop;
-reg  [7:0]    pkt_tx_eop;
+reg           pkt_tx_eop;
+reg  [2:0]    pkt_tx_mod;
 
 /*AUTOWIRE*/
 // Beginning of automatic wires (for undeclared instantiated-module outputs)
 wire                    pkt_rx_avail;           // From dut of xge_mac.v
 wire [63:0]             pkt_rx_data;            // From dut of xge_mac.v
-wire [7:0]              pkt_rx_eop;             // From dut of xge_mac.v
+wire                    pkt_rx_eop;             // From dut of xge_mac.v
 wire                    pkt_rx_err;             // From dut of xge_mac.v
+wire [2:0]              pkt_rx_mod;             // From dut of xge_mac.v
 wire                    pkt_rx_sop;             // From dut of xge_mac.v
 wire                    pkt_rx_val;             // From dut of xge_mac.v
 wire                    pkt_tx_full;            // From dut of xge_mac.v
@@ -91,8 +93,9 @@ xge_mac dut(/*AUTOINST*/
             // Outputs
             .pkt_rx_avail               (pkt_rx_avail),
             .pkt_rx_data                (pkt_rx_data[63:0]),
-            .pkt_rx_eop                 (pkt_rx_eop[7:0]),
+            .pkt_rx_eop                 (pkt_rx_eop),
             .pkt_rx_err                 (pkt_rx_err),
+            .pkt_rx_mod                 (pkt_rx_mod[2:0]),
             .pkt_rx_sop                 (pkt_rx_sop),
             .pkt_rx_val                 (pkt_rx_val),
             .pkt_tx_full                (pkt_tx_full),
@@ -107,7 +110,8 @@ xge_mac dut(/*AUTOINST*/
             .clk_xgmii_tx               (clk_xgmii_tx),
             .pkt_rx_ren                 (pkt_rx_ren),
             .pkt_tx_data                (pkt_tx_data[63:0]),
-            .pkt_tx_eop                 (pkt_tx_eop[7:0]),
+            .pkt_tx_eop                 (pkt_tx_eop),
+            .pkt_tx_mod                 (pkt_tx_mod[2:0]),
             .pkt_tx_sop                 (pkt_tx_sop),
             .pkt_tx_val                 (pkt_tx_val),
             .reset_156m25_n             (reset_156m25_n),
@@ -188,7 +192,8 @@ initial begin
     pkt_tx_data = 64'b0;
     pkt_tx_val = 1'b0;
     pkt_tx_sop = 1'b0;
-    pkt_tx_eop = 8'b0;
+    pkt_tx_eop = 1'b0;
+    pkt_tx_mod = 3'b0;
 
 end
 
@@ -223,10 +228,15 @@ task TxPacket;
         for (i = 0; i < tx_length; i = i + 8) begin
 
             pkt_tx_sop = 1'b0;
-            pkt_tx_eop = 8'b0;
+            pkt_tx_eop = 1'b0;
+            pkt_tx_mod = 2'b0;
 
             if (i == 0) pkt_tx_sop = 1'b1;
-            if (i + 8 >= tx_length) pkt_tx_eop[tx_length-i-1] = 1'b1;
+
+            if (i + 8 >= tx_length) begin
+                pkt_tx_eop = 1'b1;
+                pkt_tx_mod = tx_length % 8;
+            end
 
             pkt_tx_data[`LANE0] = tx_buffer[i];
             pkt_tx_data[`LANE1] = tx_buffer[i+1];
@@ -243,7 +253,8 @@ task TxPacket;
         end
 
         pkt_tx_val = 1'b0;
-        pkt_tx_eop = 8'b0;
+        pkt_tx_eop = 1'b0;
+        pkt_tx_mod = 3'b0;
 
     end
 

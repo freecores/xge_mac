@@ -64,7 +64,7 @@ output        rxhfifo_ralmost_empty;
 generic_fifo #(
   .DWIDTH (72),
   .AWIDTH (`RX_HOLD_FIFO_AWIDTH),
-  .REGISTER_READ (0),
+  .REGISTER_READ (1),
   .EARLY_READ (1),
   .CLOCK_CROSSING (0),
   .ALMOST_EMPTY_THRESH (7),

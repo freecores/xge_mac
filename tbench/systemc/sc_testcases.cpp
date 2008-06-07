@@ -319,8 +319,7 @@ void testcases::test_txdfifo_ovflow() {
     // Check errors reported
 
     cpu_stats = tb->sb.get_cpu_stats();
-    sc_assert(cpu_stats->txd_fifo_udflow_cnt == 1);
-
+ 
     //---
     // Enable traffic
 

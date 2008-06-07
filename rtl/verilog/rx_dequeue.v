@@ -41,7 +41,7 @@
 module rx_dequeue(/*AUTOARG*/
   // Outputs
   rxdfifo_ren, pkt_rx_data, pkt_rx_val, pkt_rx_sop, pkt_rx_eop, 
-  pkt_rx_err, pkt_rx_avail, status_rxdfifo_udflow_tog, 
+  pkt_rx_err, pkt_rx_mod, pkt_rx_avail, status_rxdfifo_udflow_tog, 
   // Inputs
   clk_156m25, reset_156m25_n, rxdfifo_rdata, rxdfifo_rstatus, 
   rxdfifo_rempty, rxdfifo_ralmost_empty, pkt_rx_ren
@@ -62,8 +62,9 @@ output        rxdfifo_ren;
 output [63:0] pkt_rx_data;
 output        pkt_rx_val;
 output        pkt_rx_sop;
-output [7:0]  pkt_rx_eop;
+output        pkt_rx_eop;
 output        pkt_rx_err;
+output [2:0]  pkt_rx_mod;
 output        pkt_rx_avail;
 
 output        status_rxdfifo_udflow_tog;
@@ -72,8 +73,9 @@ output        status_rxdfifo_udflow_tog;
 // Beginning of automatic regs (for this module's undeclared outputs)
 reg                     pkt_rx_avail;
 reg [63:0]              pkt_rx_data;
-reg [7:0]               pkt_rx_eop;
+reg                     pkt_rx_eop;
 reg                     pkt_rx_err;
+reg [2:0]               pkt_rx_mod;
 reg                     pkt_rx_sop;
 reg                     pkt_rx_val;
 reg                     status_rxdfifo_udflow_tog;
@@ -85,26 +87,11 @@ reg           end_eop;
 // Beginning of automatic wires (for undeclared instantiated-module outputs)
 // End of automatics
 
-wire   [7:0]  eop;
-
 
 // End eop to force one cycle between packets
 
 assign rxdfifo_ren = !rxdfifo_rempty && pkt_rx_ren && !end_eop;
 
-
-
-// EOP position is stored in status portion of rx data fifo.
-// If we read an EOP indicator, set the corresponding eop line.
-
-assign eop[0] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP0;
-assign eop[1] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP1;
-assign eop[2] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP2;
-assign eop[3] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP3;
-assign eop[4] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP4;
-assign eop[5] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP5;
-assign eop[6] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP6;
-assign eop[7] = rxdfifo_rstatus[3:0] == `RXSTATUS_EOP7;
 
 
 always @(posedge clk_156m25 or negedge reset_156m25_n) begin
@@ -115,8 +102,9 @@ always @(posedge clk_156m25 or negedge reset_156m25_n) begin
 
         pkt_rx_data <= 64'b0;
         pkt_rx_sop <= 1'b0;
-        pkt_rx_eop <= 8'b0;
+        pkt_rx_eop <= 1'b0;
         pkt_rx_err <= 1'b0;
+        pkt_rx_mod <= 3'b0;
 
         pkt_rx_val <= 1'b0;
 
@@ -134,9 +122,11 @@ always @(posedge clk_156m25 or negedge reset_156m25_n) begin
         // If eop shows up at the output of the fifo, we drive eop on
         // the bus on the next read. This will be the last read for this
         // packet. The fifo is designed to output data early. On last read,
-        // data from next packet will appear at the output of fifo.
+        // data from next packet will appear at the output of fifo. Modulus
+        // of packet length is in lower bits.
         
-        pkt_rx_eop <= {8{rxdfifo_ren}} & eop;
+        pkt_rx_eop <= rxdfifo_ren && rxdfifo_rstatus[`RXSTATUS_EOP];
+        pkt_rx_mod <= {3{rxdfifo_ren & rxdfifo_rstatus[`RXSTATUS_EOP]}} & rxdfifo_rstatus[2:0];
 
 
         pkt_rx_val <= rxdfifo_ren;
@@ -148,7 +138,7 @@ always @(posedge clk_156m25 or negedge reset_156m25_n) begin
         end
 
 
-        if (rxdfifo_ren && rxdfifo_rstatus[3:0] == `RXSTATUS_SOP) begin
+        if (rxdfifo_ren && rxdfifo_rstatus[`RXSTATUS_SOP]) begin
 
             // SOP indication on first word
 
@@ -165,14 +155,14 @@ always @(posedge clk_156m25 or negedge reset_156m25_n) begin
 
             if (rxdfifo_rempty && pkt_rx_ren && !end_eop) begin
                 pkt_rx_val <= 1'b1;
-                pkt_rx_eop <= 8'b1;
+                pkt_rx_eop <= 1'b1;
                 pkt_rx_err <= 1'b1;
             end
 
         end
 
 
-        if (rxdfifo_ren && |(rxdfifo_rstatus[7:4] & `RXSTATUS_ERR)) begin
+        if (rxdfifo_ren && |(rxdfifo_rstatus[`RXSTATUS_ERR])) begin
 
             // Status stored in FIFO is propagated to error signal.
 
@@ -184,7 +174,7 @@ always @(posedge clk_156m25 or negedge reset_156m25_n) begin
         //---
         // EOP indication at the end of the frame. Cleared otherwise.
         
-        if (rxdfifo_ren && |eop) begin
+        if (rxdfifo_ren && rxdfifo_rstatus[`RXSTATUS_EOP]) begin
             end_eop <= 1'b1;
         end
         else if (pkt_rx_ren) begin

@@ -71,7 +71,7 @@ generic_fifo #(
   .EARLY_READ (1),
   .CLOCK_CROSSING (0),
   .ALMOST_EMPTY_THRESH (7),
-  .ALMOST_FULL_THRESH (6),
+  .ALMOST_FULL_THRESH (4),
   .MEM_TYPE (`MEM_AUTO_SMALL)
 )
 fifo0(

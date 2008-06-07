@@ -69,7 +69,7 @@ output        txdfifo_ralmost_empty;
 generic_fifo #(
   .DWIDTH (72),
   .AWIDTH (`TX_DATA_FIFO_AWIDTH),
-  .REGISTER_READ (0),
+  .REGISTER_READ (1),
   .EARLY_READ (1),
   .CLOCK_CROSSING (1),
   .ALMOST_EMPTY_THRESH (7),

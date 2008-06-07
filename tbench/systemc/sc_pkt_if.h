@@ -55,7 +55,8 @@ SC_MODULE(pkt_if) {
     sc_in<bool> reset_156m25_n;
 
     sc_out<sc_bv<64> > pkt_tx_data;
-    sc_out<unsigned int> pkt_tx_eop;
+    sc_out<bool> pkt_tx_eop;
+    sc_out<unsigned int> pkt_tx_mod;
     sc_out<bool> pkt_tx_sop;
     sc_out<bool> pkt_tx_val;
 
@@ -63,7 +64,8 @@ SC_MODULE(pkt_if) {
 
     sc_in<bool> pkt_rx_avail;
     sc_in<sc_bv<64> > pkt_rx_data;
-    sc_in<unsigned int> pkt_rx_eop;
+    sc_in<bool> pkt_rx_eop;
+    sc_in<unsigned int> pkt_rx_mod;
     sc_in<bool> pkt_rx_err;
     sc_in<bool> pkt_rx_sop;
     sc_in<bool> pkt_rx_val;

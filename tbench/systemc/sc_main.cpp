@@ -1,4 +1,4 @@
-// $Id: sc_main.cpp,v 1.2 2008-06-01 00:09:10 antanguay Exp $ -*- SystemC -*-
+// $Id: sc_main.cpp,v 1.3 2008-06-07 02:59:55 antanguay Exp $ -*- SystemC -*-
 // DESCRIPTION: Verilator Example: Top level main for invoking SystemC model
 //
 // Copyright 2003-2008 by Wilson Snyder. This program is free software; you can
@@ -77,7 +77,8 @@ int sc_main(int argc, char* argv[]) {
 
     sc_signal<bool> pkt_rx_ren;
     sc_signal<sc_bv<64> > pkt_tx_data;
-    sc_signal<unsigned int> pkt_tx_eop;
+    sc_signal<bool> pkt_tx_eop;
+    sc_signal<unsigned int> pkt_tx_mod;
     sc_signal<bool> pkt_tx_sop;
     sc_signal<bool> pkt_tx_val;
     sc_signal<bool> reset_156m25_n;
@@ -93,7 +94,8 @@ int sc_main(int argc, char* argv[]) {
 
     sc_signal<bool> pkt_rx_avail;
     sc_signal<sc_bv<64> > pkt_rx_data;
-    sc_signal<unsigned int> pkt_rx_eop;
+    sc_signal<bool> pkt_rx_eop;
+    sc_signal<unsigned int> pkt_rx_mod;
     sc_signal<bool> pkt_rx_sop;
     sc_signal<bool> pkt_rx_val;
     sc_signal<bool> pkt_rx_err;
@@ -116,6 +118,7 @@ int sc_main(int argc, char* argv[]) {
     top->pkt_rx_ren (pkt_rx_ren);
     top->pkt_tx_data (pkt_tx_data);
     top->pkt_tx_eop (pkt_tx_eop);
+    top->pkt_tx_mod (pkt_tx_mod);
     top->pkt_tx_sop (pkt_tx_sop);
     top->pkt_tx_val (pkt_tx_val);
     top->reset_156m25_n (reset_156m25_n);
@@ -134,6 +137,7 @@ int sc_main(int argc, char* argv[]) {
     top->pkt_rx_avail (pkt_rx_avail);
     top->pkt_rx_data (pkt_rx_data);
     top->pkt_rx_eop (pkt_rx_eop);
+    top->pkt_rx_mod (pkt_rx_mod);
     top->pkt_rx_err (pkt_rx_err);
     top->pkt_rx_sop (pkt_rx_sop);
     top->pkt_rx_val (pkt_rx_val);
@@ -175,6 +179,7 @@ int sc_main(int argc, char* argv[]) {
 
     tb->pkt_tx_data (pkt_tx_data);
     tb->pkt_tx_eop (pkt_tx_eop);
+    tb->pkt_tx_mod (pkt_tx_mod);
     tb->pkt_tx_sop (pkt_tx_sop);
     tb->pkt_tx_val (pkt_tx_val);
 
@@ -183,6 +188,7 @@ int sc_main(int argc, char* argv[]) {
     tb->pkt_rx_avail (pkt_rx_avail);
     tb->pkt_rx_data (pkt_rx_data);
     tb->pkt_rx_eop (pkt_rx_eop);
+    tb->pkt_rx_mod (pkt_rx_mod);
     tb->pkt_rx_err (pkt_rx_err);
     tb->pkt_rx_sop (pkt_rx_sop);
     tb->pkt_rx_val (pkt_rx_val);

@@ -44,7 +44,7 @@ module tx_enqueue(/*AUTOARG*/
   status_txdfifo_ovflow_tog, 
   // Inputs
   clk_156m25, reset_156m25_n, pkt_tx_data, pkt_tx_val, pkt_tx_sop, 
-  pkt_tx_eop, txdfifo_wfull, txdfifo_walmost_full
+  pkt_tx_eop, pkt_tx_mod, txdfifo_wfull, txdfifo_walmost_full
   );
 
 `include "CRC32_D64.v"
@@ -57,7 +57,8 @@ input         reset_156m25_n;
 input  [63:0] pkt_tx_data;
 input         pkt_tx_val;
 input         pkt_tx_sop;
-input  [7:0]  pkt_tx_eop;
+input         pkt_tx_eop;
+input  [2:0]  pkt_tx_mod;
 
 input         txdfifo_wfull;
 input         txdfifo_walmost_full;
@@ -120,8 +121,8 @@ always @(posedge clk_156m25 or negedge reset_156m25_n) begin
 
 end
 
-always @(/*AS*/pkt_tx_data or pkt_tx_eop or pkt_tx_sop or pkt_tx_val
-         or txd_ovflow or txdfifo_wfull) begin
+always @(/*AS*/pkt_tx_data or pkt_tx_eop or pkt_tx_mod or pkt_tx_sop
+         or pkt_tx_val or txd_ovflow or txdfifo_wfull) begin
 
     txdfifo_wstatus = `TXSTATUS_NONE;
     txdfifo_wdata = pkt_tx_data;
@@ -134,7 +135,7 @@ always @(/*AS*/pkt_tx_data or pkt_tx_eop or pkt_tx_sop or pkt_tx_val
     
     if (pkt_tx_val && pkt_tx_sop) begin
 
-        txdfifo_wstatus = `TXSTATUS_SOP;
+        txdfifo_wstatus[`TXSTATUS_SOP] = 1'b1;
 
     end
 
@@ -143,29 +144,9 @@ always @(/*AS*/pkt_tx_data or pkt_tx_eop or pkt_tx_sop or pkt_tx_val
     
     if (pkt_tx_val) begin
 
-        if (pkt_tx_eop[0]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP0;
-        end
-        else if (pkt_tx_eop[1]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP1;
-        end
-        else if (pkt_tx_eop[2]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP2;
-        end
-        else if (pkt_tx_eop[3]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP3;
-        end
-        else if (pkt_tx_eop[4]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP4;
-        end
-        else if (pkt_tx_eop[5]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP5;
-        end
-        else if (pkt_tx_eop[6]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP6;
-        end
-        else if (pkt_tx_eop[7]) begin
-            txdfifo_wstatus = `TXSTATUS_EOP7;
+        if (pkt_tx_eop) begin
+            txdfifo_wstatus[2:0] = pkt_tx_mod;
+            txdfifo_wstatus[`TXSTATUS_EOP] = 1'b1;
         end
 
     end

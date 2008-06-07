@@ -97,7 +97,8 @@ void pkt_if::transmit() {
                 }
 
                 if (i + 8 >= pkt->length) {
-                    pkt_tx_eop = 0x1 << ((pkt->length - 1) % 8);
+                    pkt_tx_eop = 1;
+                    pkt_tx_mod = pkt->length % 8;
                 }
                 else {
                     pkt_tx_eop = 0;
@@ -187,13 +188,13 @@ void pkt_if::receive() {
                         sc_stop();
                     }
 
-                    if ((pkt_rx_eop >> lane) & 0x1 == 1) {
+                    if (pkt_rx_eop && (pkt_rx_mod == ((lane+1) % 8))) {
                         break;
                     }
                 }
 
                 // Stop on EOP
-
+                
                 if (pkt_rx_eop) {
                     break;
                 }

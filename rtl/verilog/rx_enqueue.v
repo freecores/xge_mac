@@ -164,6 +164,8 @@ reg           next_drop_data;
 
 reg           pkt_pending;
 
+reg           rxhfifo_ren_d1;
+
 reg           rxhfifo_ralmost_empty_d1;
 
 
@@ -413,7 +415,7 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
     next_state = curr_state;
 
     rxhfifo_wdata = xgxs_rxd_barrel_d1;
-    rxhfifo_wstatus = {`RXSTATUS_NONE, `RXSTATUS_NONE};
+    rxhfifo_wstatus = `RXSTATUS_NONE;
     rxhfifo_wen = 1'b0;
 
     addmask[0] = !(xgxs_rxd_barrel_d1[`LANE0] == `TERMINATE && xgxs_rxc_barrel_d1[0]);
@@ -492,13 +494,13 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   next_coding_error = 1'b0;
 
                   fragment_error = 1'b1;
-                  rxhfifo_wstatus[7:4] = `RXSTATUS_ERR;
+                  rxhfifo_wstatus[`RXSTATUS_ERR] = 1'b1;
 
                   if (curr_byte_cnt == 14'b0) begin
                       rxhfifo_wen = 1'b0;
                   end
                   else begin
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP0;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
                   end
 
               end
@@ -508,9 +510,9 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   // Abort transfer, write a fake EOP, report as fragment.
 
                   fragment_error = 1'b1;
-                  rxhfifo_wstatus[7:4] = `RXSTATUS_ERR;
+                  rxhfifo_wstatus[`RXSTATUS_ERR] = 1'b1;
 
-                  rxhfifo_wstatus[3:0] = `RXSTATUS_EOP0;
+                  rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
                   next_state = SM_IDLE;
 
               end
@@ -537,7 +539,7 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   // Write SOP to status bits during first byte
 
                   if (curr_byte_cnt == 14'b0) begin
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_SOP;
+                      rxhfifo_wstatus[`RXSTATUS_SOP] = 1'b1;
                   end
 
                   /* verilator lint_off WIDTH */
@@ -552,13 +554,14 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   // are four or less bytes of crc. We also strip off the
                   // crc, which requires looking one cycle ahead
                   // wstatus: 
-                  //   [3:0] end of frame postion or sop
+                  //   [2:0] modulus of packet length
 
                   // Look one cycle ahead for TERMINATE in lanes 0 to 4
 
                   if (xgxs_rxd_barrel[`LANE4] == `TERMINATE && xgxs_rxc_barrel[4]) begin
-
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP7;
+ 
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd0;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd8;
@@ -570,7 +573,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
 
                   if (xgxs_rxd_barrel[`LANE3] == `TERMINATE && xgxs_rxc_barrel[3]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP6;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd7;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd7;
@@ -582,7 +586,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
               
                   if (xgxs_rxd_barrel[`LANE2] == `TERMINATE && xgxs_rxc_barrel[2]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP5;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd6;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd6;
@@ -594,7 +599,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
 
                   if (xgxs_rxd_barrel[`LANE1] == `TERMINATE && xgxs_rxc_barrel[1]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP4;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd5;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd5;
@@ -606,7 +612,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
               
                   if (xgxs_rxd_barrel[`LANE0] == `TERMINATE && xgxs_rxc_barrel[0]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP3;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd4;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd4;
@@ -621,7 +628,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   if (xgxs_rxd_barrel_d1[`LANE7] == `TERMINATE &&
                       xgxs_rxc_barrel_d1[7]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP2;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd3;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd3;
@@ -634,7 +642,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   if (xgxs_rxd_barrel_d1[`LANE6] == `TERMINATE &&
                       xgxs_rxc_barrel_d1[6]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP1;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd2;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd2;
@@ -647,7 +656,8 @@ always @(/*AS*/coding_error or crc_rx or curr_byte_cnt or curr_state
                   if (xgxs_rxd_barrel_d1[`LANE5] == `TERMINATE &&
                       xgxs_rxc_barrel_d1[5]) begin
 
-                      rxhfifo_wstatus[3:0] = `RXSTATUS_EOP0;
+                      rxhfifo_wstatus[`RXSTATUS_EOP] = 1'b1;
+                      rxhfifo_wstatus[2:0] = 3'd1;
 
                       crc_start_8b = 1'b1;
                       next_crc_bytes = 4'd1;
@@ -679,6 +689,8 @@ always @(posedge clk_xgmii_rx or negedge reset_xgmii_rx_n) begin
 
         pkt_pending <= 1'b0;
 
+        rxhfifo_ren_d1 <= 1'b0;
+
     end
     else begin
 
@@ -686,15 +698,9 @@ always @(posedge clk_xgmii_rx or negedge reset_xgmii_rx_n) begin
 
         drop_data <= next_drop_data;
 
-        pkt_pending <= rxhfifo_ren &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP0 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP1 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP2 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP3 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP4 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP5 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP6 &&
-                       rxhfifo_rstatus[3:0] != `RXSTATUS_EOP7;
+        pkt_pending <= rxhfifo_ren;
+
+        rxhfifo_ren_d1 <= rxhfifo_ren;
 
     end
 
@@ -702,7 +708,7 @@ end
 
 always @(/*AS*/crc_done or crc_good or drop_data or pkt_pending
          or rxdfifo_wfull or rxhfifo_ralmost_empty_d1 or rxhfifo_rdata
-         or rxhfifo_rstatus) begin
+         or rxhfifo_ren_d1 or rxhfifo_rstatus) begin
 
     rxd_ovflow_error = 1'b0;
 
@@ -715,11 +721,11 @@ always @(/*AS*/crc_done or crc_good or drop_data or pkt_pending
     // There must be at least 8 words in holding FIFO before we start reading.
     // This provides enough time for CRC calculation.
 
-    rxhfifo_ren = !rxhfifo_ralmost_empty_d1 || pkt_pending;
+    rxhfifo_ren = !rxhfifo_ralmost_empty_d1 ||
+                  (pkt_pending && !rxhfifo_rstatus[`RXSTATUS_EOP]);
     
 
-
-    if (rxhfifo_ren && rxhfifo_rstatus[3:0] == `RXSTATUS_SOP) begin
+    if (rxhfifo_ren_d1 && rxhfifo_rstatus[`RXSTATUS_SOP]) begin
 
         // Reset drop flag on SOP
         
@@ -727,7 +733,7 @@ always @(/*AS*/crc_done or crc_good or drop_data or pkt_pending
 
     end
 
-    if (rxhfifo_ren && rxdfifo_wfull && !next_drop_data) begin
+    if (rxhfifo_ren_d1 && rxdfifo_wfull && !next_drop_data) begin
 
         // FIFO overflow, abort transfer. The rest of the frame
         // will be dropped. Since we can't put an EOP indication
@@ -740,7 +746,7 @@ always @(/*AS*/crc_done or crc_good or drop_data or pkt_pending
     end
 
 
-    rxdfifo_wen = rxhfifo_ren && !next_drop_data;
+    rxdfifo_wen = rxhfifo_ren_d1 && !next_drop_data;
 
 
 
@@ -748,7 +754,7 @@ always @(/*AS*/crc_done or crc_good or drop_data or pkt_pending
 
         // Flag packet with error when CRC error is detected
    
-        rxdfifo_wstatus[7:4] = rxhfifo_rstatus[7:4] | `RXSTATUS_ERR;
+        rxdfifo_wstatus[`RXSTATUS_ERR] = 1'b1;
 
     end
 

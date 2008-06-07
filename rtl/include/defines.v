@@ -78,29 +78,14 @@
 `define LANE7      63:56
 
 
-`define TXSTATUS_NONE       8'h00
-`define TXSTATUS_EOP0       8'h01
-`define TXSTATUS_EOP1       8'h02
-`define TXSTATUS_EOP2       8'h04
-`define TXSTATUS_EOP3       8'h08
-`define TXSTATUS_EOP4       8'h10
-`define TXSTATUS_EOP5       8'h20
-`define TXSTATUS_EOP6       8'h40
-`define TXSTATUS_EOP7       8'h80
-`define TXSTATUS_SOP        8'hff
+`define TXSTATUS_NONE       8'h0
+`define TXSTATUS_EOP        3'd6
+`define TXSTATUS_SOP        3'd7
 
-`define RXSTATUS_NONE       4'h0
-`define RXSTATUS_EOP0       4'h1
-`define RXSTATUS_EOP1       4'h2
-`define RXSTATUS_EOP2       4'h3
-`define RXSTATUS_EOP3       4'h4
-`define RXSTATUS_EOP4       4'h5
-`define RXSTATUS_EOP5       4'h6
-`define RXSTATUS_EOP6       4'h7
-`define RXSTATUS_EOP7       4'h8
-`define RXSTATUS_SOP        4'h9
-
-`define RXSTATUS_ERR        4'h1
+`define RXSTATUS_NONE       8'h0
+`define RXSTATUS_ERR        3'd5
+`define RXSTATUS_EOP        3'd6
+`define RXSTATUS_SOP        3'd7
 
 
 //

@@ -78,7 +78,8 @@ SC_MODULE(testbench) {
     sc_in<sc_bv<64> > xgmii_txd;
 
     sc_out<sc_bv<64> > pkt_tx_data;
-    sc_out<unsigned int> pkt_tx_eop;
+    sc_out<bool> pkt_tx_eop;
+    sc_out<unsigned int> pkt_tx_mod;
     sc_out<bool> pkt_tx_sop;
     sc_out<bool> pkt_tx_val;
 
@@ -86,7 +87,8 @@ SC_MODULE(testbench) {
 
     sc_in<bool> pkt_rx_avail;
     sc_in<sc_bv<64> > pkt_rx_data;
-    sc_in<unsigned int> pkt_rx_eop;
+    sc_in<bool> pkt_rx_eop;
+    sc_in<unsigned int> pkt_rx_mod;
     sc_in<bool> pkt_rx_err;
     sc_in<bool> pkt_rx_sop;
     sc_in<bool> pkt_rx_val;
@@ -143,6 +145,7 @@ SC_MODULE(testbench) {
 
         pkt_if0.pkt_tx_data (pkt_tx_data);
         pkt_if0.pkt_tx_eop (pkt_tx_eop);
+        pkt_if0.pkt_tx_mod (pkt_tx_mod);
         pkt_if0.pkt_tx_sop (pkt_tx_sop);
         pkt_if0.pkt_tx_val (pkt_tx_val);
 
@@ -151,6 +154,7 @@ SC_MODULE(testbench) {
         pkt_if0.pkt_rx_avail (pkt_rx_avail);
         pkt_if0.pkt_rx_data (pkt_rx_data);
         pkt_if0.pkt_rx_eop (pkt_rx_eop);
+        pkt_if0.pkt_rx_mod (pkt_rx_mod);
         pkt_if0.pkt_rx_err (pkt_rx_err);
         pkt_if0.pkt_rx_sop (pkt_rx_sop);
         pkt_if0.pkt_rx_val (pkt_rx_val);

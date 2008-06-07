@@ -116,8 +116,8 @@ reg   [7:0]     next_xgxs_txc;
 reg   [2:0]     curr_state;
 reg   [2:0]     next_state;
 
-reg   [1:0]     curr_state_rd;
-reg   [1:0]     next_state_rd;
+reg   [0:0]     curr_state_rd;
+reg   [0:0]     next_state_rd;
 
 reg             start_on_lane0;
 reg             next_start_on_lane0;
@@ -134,13 +134,13 @@ reg             next_ifg_8b_add;
 reg             ifg_8b2_add;
 reg             next_ifg_8b2_add;
 
+reg   [7:0]     eop;
+reg   [7:0]     next_eop;
+
 reg   [63:32]   xgxs_txd_barrel;
 reg   [7:4]     xgxs_txc_barrel;
 
 reg   [63:0]    txhfifo_rdata_d1;
-
-reg             txdfifo_ralmost_empty_d1;
-reg             txdfifo_ralmost_empty_d2;
 
 reg   [13:0]    byte_cnt;
 
@@ -149,8 +149,8 @@ reg   [31:0]    crc32_d8;
 reg   [31:0]    crc32_tx;
 
 reg   [63:0]    shift_crc_data;
-reg   [7:0]     shift_crc_eop;
-reg   [2:0]     shift_crc_cnt;
+reg   [3:0]     shift_crc_eop;
+reg   [3:0]     shift_crc_cnt;
 
 reg   [31:0]    crc_data;
 
@@ -161,6 +161,8 @@ reg   [63:0]    next_txhfifo_wdata;
 reg   [7:0]     next_txhfifo_wstatus;
 reg             next_txhfifo_wen;   
 
+reg             txdfifo_ren_d1;
+
 parameter [2:0]
              SM_IDLE      = 3'd0,
              SM_PREAMBLE  = 3'd1,
@@ -170,10 +172,9 @@ parameter [2:0]
              SM_TERM_FAIL = 3'd5,
              SM_IFG       = 3'd6;
 
-parameter [1:0]
-             SM_RD_IDLE = 2'd0,
-             SM_RD_EQ   = 2'd1,
-             SM_RD_PAD  = 2'd2;
+parameter [0:0]
+             SM_RD_EQ   = 1'd0,
+             SM_RD_PAD  = 1'd1;
 
 
 //---
@@ -232,13 +233,12 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
         ifg_8b_add <= 1'b0;
         ifg_8b2_add <= 1'b0;
 
+        eop <= 8'b0;
+
         txhfifo_rdata_d1 <= 64'b0;
 
         xgxs_txd_barrel <= {4{`IDLE}};
         xgxs_txc_barrel <= 4'hf;
-
-        txdfifo_ralmost_empty_d1 <= 1'b1;
-        txdfifo_ralmost_empty_d2 <= 1'b1;
 
         frame_available <= 1'b0;
 
@@ -258,13 +258,12 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
         ifg_8b_add <= next_ifg_8b_add;
         ifg_8b2_add <= next_ifg_8b2_add;
 
+        eop <= next_eop;
+
         txhfifo_rdata_d1 <= txhfifo_rdata;
 
         xgxs_txd_barrel <= next_xgxs_txd[63:32];
         xgxs_txc_barrel <= next_xgxs_txc[7:4];
-
-        txdfifo_ralmost_empty_d1 <= txdfifo_ralmost_empty;
-        txdfifo_ralmost_empty_d2 <= txdfifo_ralmost_empty_d1;
 
         frame_available <= next_frame_available;
 
@@ -297,7 +296,7 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
 
 end
 
-always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
+always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state or eop
          or frame_available or ifg_4b_add or ifg_8b2_add or ifg_8b_add
          or ifg_deficit or start_on_lane0 or status_local_fault_ctx
          or txhfifo_ralmost_empty or txhfifo_rdata_d1
@@ -310,6 +309,8 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
     next_ifg_4b_add = ifg_4b_add;
     next_ifg_8b_add = ifg_8b_add;
     next_ifg_8b2_add = ifg_8b2_add;
+
+    next_eop = eop;
 
     next_xgxs_txd = {8{`IDLE}};
     next_xgxs_txc = 8'hff;
@@ -349,17 +350,24 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
         SM_PREAMBLE:
          begin
 
-             txhfifo_ren = 1'b1;
-
-
              // On reading SOP from fifo, send SFD and preamble characters
 
-             if (txhfifo_rstatus == `TXSTATUS_SOP) begin
+             if (txhfifo_rstatus[`TXSTATUS_SOP]) begin
 
                  next_xgxs_txd = {`SFD, {6{`PREAMBLE}}, `START};
                  next_xgxs_txc = 8'h01;
 
-             end	
+                 txhfifo_ren = 1'b1;
+
+                 next_state = SM_TX;
+
+             end
+             else begin
+
+                 next_frame_available = 1'b0;
+                 next_state = SM_IDLE;
+
+             end
 
 
              // Depending on deficit idle count calculations, add 4 bytes
@@ -372,8 +380,6 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
              else begin
                  next_start_on_lane0 = 1'b1;
              end
-
-             next_state = SM_TX;
 
           end
 
@@ -389,28 +395,31 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
               // Wait for EOP indication to be read from the fifo, then
               // transition to next state.
 
-              if (txhfifo_rstatus == `TXSTATUS_EOP0 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP1 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP2 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP3 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP4 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP5 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP6 ||
-                  txhfifo_rstatus == `TXSTATUS_EOP7) begin
+              if (txhfifo_rstatus[`TXSTATUS_EOP]) begin
                   
                   txhfifo_ren = 1'b0;
                   next_frame_available = !txhfifo_ralmost_empty;
                   next_state = SM_EOP;
+
               end
-              else if (txhfifo_rempty) begin
+              else if (txhfifo_rempty || txhfifo_rstatus[`TXSTATUS_SOP]) begin
 
                   // Failure condition, we did not see EOP and there
-                  // is no more data in fifo, force end of packet transmit.
+                  // is no more data in fifo or SOP, force end of packet transmit.
 
                   next_state = SM_TERM_FAIL;
 
               end
 
+              next_eop[0] = txhfifo_rstatus[2:0] == 3'd1;
+              next_eop[1] = txhfifo_rstatus[2:0] == 3'd2;
+              next_eop[2] = txhfifo_rstatus[2:0] == 3'd3;
+              next_eop[3] = txhfifo_rstatus[2:0] == 3'd4;
+              next_eop[4] = txhfifo_rstatus[2:0] == 3'd5;
+              next_eop[5] = txhfifo_rstatus[2:0] == 3'd6;
+              next_eop[6] = txhfifo_rstatus[2:0] == 3'd7;
+              next_eop[7] = txhfifo_rstatus[2:0] == 3'd0;
+                
           end
 
         SM_EOP:
@@ -419,44 +428,44 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
               // Insert TERMINATE character in correct lane depending on position
               // of EOP read from fifo. Also insert CRC read from control fifo.
 
-              if (txhfifo_rstatus[0]) begin
+              if (eop[0]) begin
                   next_xgxs_txd = {{2{`IDLE}}, `TERMINATE, 
                                    crc32_tx[31:0], txhfifo_rdata_d1[7:0]};
                   next_xgxs_txc = 8'b11100000;
               end
 
-              if (txhfifo_rstatus[1]) begin
+              if (eop[1]) begin
                   next_xgxs_txd = {`IDLE, `TERMINATE,
                                    crc32_tx[31:0], txhfifo_rdata_d1[15:0]};
                   next_xgxs_txc = 8'b11000000;
               end
 
-              if (txhfifo_rstatus[2]) begin
+              if (eop[2]) begin
                   next_xgxs_txd = {`TERMINATE, crc32_tx[31:0], txhfifo_rdata_d1[23:0]};
                   next_xgxs_txc = 8'b10000000;
               end
 
-              if (txhfifo_rstatus[3]) begin
+              if (eop[3]) begin
                   next_xgxs_txd = {crc32_tx[31:0], txhfifo_rdata_d1[31:0]};
                   next_xgxs_txc = 8'b00000000;
               end
 
-              if (txhfifo_rstatus[4]) begin
+              if (eop[4]) begin
                   next_xgxs_txd = {crc32_tx[23:0], txhfifo_rdata_d1[39:0]};
                   next_xgxs_txc = 8'b00000000;
               end
 
-              if (txhfifo_rstatus[5]) begin
+              if (eop[5]) begin
                   next_xgxs_txd = {crc32_tx[15:0], txhfifo_rdata_d1[47:0]};
                   next_xgxs_txc = 8'b00000000;
               end
 
-              if (txhfifo_rstatus[6]) begin
+              if (eop[6]) begin
                   next_xgxs_txd = {crc32_tx[7:0], txhfifo_rdata_d1[55:0]};
                   next_xgxs_txc = 8'b00000000;
               end
 
-              if (txhfifo_rstatus[7]) begin
+              if (eop[7]) begin
                   next_xgxs_txd = {txhfifo_rdata_d1[63:0]};
                   next_xgxs_txc = 8'b00000000;
               end
@@ -476,10 +485,10 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
                   // between TERMINATE and alignment of next frame in LANE0.
 
                   next_ifg_deficit = ifg_deficit +
-                                     {2'b0, txhfifo_rstatus[0] | txhfifo_rstatus[4]} +
-                                     {1'b0, txhfifo_rstatus[1] | txhfifo_rstatus[5], 1'b0} +
-                                     {1'b0, txhfifo_rstatus[2] | txhfifo_rstatus[6],
-                                      txhfifo_rstatus[2] | txhfifo_rstatus[6]};
+                                     {2'b0, eop[0] | eop[4]} +
+                                     {1'b0, eop[1] | eop[5], 1'b0} +
+                                     {1'b0, eop[2] | eop[6],
+                                      eop[2] | eop[6]};
               end
 
               // IFG corrections based on deficit count and previous starting lane
@@ -526,25 +535,25 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
 
                   // Add 4 bytes IFG
                   
-                  next_ifg_4b_add = (txhfifo_rstatus[0] & !start_on_lane0) |
-                                    (txhfifo_rstatus[1] & !start_on_lane0) |
-                                    (txhfifo_rstatus[2] & !start_on_lane0) |
-                                    (txhfifo_rstatus[3] & start_on_lane0) |
-                                    (txhfifo_rstatus[4] & start_on_lane0) |
-                                    (txhfifo_rstatus[5] & start_on_lane0) |
-                                    (txhfifo_rstatus[6] & start_on_lane0) |
-                                    (txhfifo_rstatus[7] & !start_on_lane0);
+                  next_ifg_4b_add = (eop[0] & !start_on_lane0) |
+                                    (eop[1] & !start_on_lane0) |
+                                    (eop[2] & !start_on_lane0) |
+                                    (eop[3] & start_on_lane0) |
+                                    (eop[4] & start_on_lane0) |
+                                    (eop[5] & start_on_lane0) |
+                                    (eop[6] & start_on_lane0) |
+                                    (eop[7] & !start_on_lane0);
 
                   // Add 8 bytes IFG
                   
-                  next_ifg_8b_add = (txhfifo_rstatus[0]) |
-                                    (txhfifo_rstatus[1]) |
-                                    (txhfifo_rstatus[2]) |
-                                    (txhfifo_rstatus[3] & !start_on_lane0) |
-                                    (txhfifo_rstatus[4] & !start_on_lane0) |
-                                    (txhfifo_rstatus[5] & !start_on_lane0) |
-                                    (txhfifo_rstatus[6] & !start_on_lane0) |
-                                    (txhfifo_rstatus[7]);
+                  next_ifg_8b_add = (eop[0]) |
+                                    (eop[1]) |
+                                    (eop[2]) |
+                                    (eop[3] & !start_on_lane0) |
+                                    (eop[4] & !start_on_lane0) |
+                                    (eop[5] & !start_on_lane0) |
+                                    (eop[6] & !start_on_lane0) |
+                                    (eop[7]);
 
                   // Add another 8 bytes IFG
 
@@ -555,35 +564,35 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
 
                   // Add 4 bytes IFG
 
-                  next_ifg_4b_add = (txhfifo_rstatus[0] & start_on_lane0) |
-                                    (txhfifo_rstatus[1] & start_on_lane0) |
-                                    (txhfifo_rstatus[2] & start_on_lane0) |
-                                    (txhfifo_rstatus[3] &  start_on_lane0) |
-                                    (txhfifo_rstatus[4] & !start_on_lane0) |
-                                    (txhfifo_rstatus[5] & !start_on_lane0) |
-                                    (txhfifo_rstatus[6] & !start_on_lane0) |
-                                    (txhfifo_rstatus[7] & !start_on_lane0);
+                  next_ifg_4b_add = (eop[0] & start_on_lane0) |
+                                    (eop[1] & start_on_lane0) |
+                                    (eop[2] & start_on_lane0) |
+                                    (eop[3] &  start_on_lane0) |
+                                    (eop[4] & !start_on_lane0) |
+                                    (eop[5] & !start_on_lane0) |
+                                    (eop[6] & !start_on_lane0) |
+                                    (eop[7] & !start_on_lane0);
 
                   // Add 8 bytes IFG
                   
-                  next_ifg_8b_add = (txhfifo_rstatus[0]) |
-                                    (txhfifo_rstatus[1]) |
-                                    (txhfifo_rstatus[2]) |
-                                    (txhfifo_rstatus[3] & !start_on_lane0) |
-                                    (txhfifo_rstatus[4]) |
-                                    (txhfifo_rstatus[5]) |
-                                    (txhfifo_rstatus[6]) |
-                                    (txhfifo_rstatus[7]);
+                  next_ifg_8b_add = (eop[0]) |
+                                    (eop[1]) |
+                                    (eop[2]) |
+                                    (eop[3] & !start_on_lane0) |
+                                    (eop[4]) |
+                                    (eop[5]) |
+                                    (eop[6]) |
+                                    (eop[7]);
 
                   // Add another 8 bytes IFG
 
-                  next_ifg_8b2_add = (txhfifo_rstatus[0] & !start_on_lane0) |
-                                     (txhfifo_rstatus[1] & !start_on_lane0) |
-                                     (txhfifo_rstatus[2] & !start_on_lane0);
+                  next_ifg_8b2_add = (eop[0] & !start_on_lane0) |
+                                     (eop[1] & !start_on_lane0) |
+                                     (eop[2] & !start_on_lane0);
 
               end
 
-              if (|txhfifo_rstatus[2:0]) begin
+              if (|eop[2:0]) begin
 
                   if (frame_available) begin
 
@@ -607,7 +616,7 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
                   end
               end
 
-              if (|txhfifo_rstatus[7:3]) begin
+              if (|eop[7:3]) begin
                   next_state = SM_TERM;
               end
 
@@ -619,27 +628,27 @@ always @(/*AS*/crc32_tx or ctrl_tx_enable_ctx or curr_state
               // Insert TERMINATE character in correct lane depending on position
               // of EOP read from fifo. Also insert CRC read from control fifo.
 
-              if (txhfifo_rstatus[3]) begin
+              if (eop[3]) begin
                   next_xgxs_txd = {{7{`IDLE}}, `TERMINATE};
                   next_xgxs_txc = 8'b11111111;
               end
 
-              if (txhfifo_rstatus[4]) begin
+              if (eop[4]) begin
                   next_xgxs_txd = {{6{`IDLE}}, `TERMINATE, crc32_tx[31:24]};
                   next_xgxs_txc = 8'b11111110;
               end
 
-              if (txhfifo_rstatus[5]) begin
+              if (eop[5]) begin
                   next_xgxs_txd = {{5{`IDLE}}, `TERMINATE, crc32_tx[31:16]};
                   next_xgxs_txc = 8'b11111100;
               end
 
-              if (txhfifo_rstatus[6]) begin
+              if (eop[6]) begin
                   next_xgxs_txd = {{4{`IDLE}}, `TERMINATE, crc32_tx[31:8]};
                   next_xgxs_txc = 8'b11111000;
               end
 
-              if (txhfifo_rstatus[7]) begin
+              if (eop[7]) begin
                   next_xgxs_txd = {{3{`IDLE}}, `TERMINATE, crc32_tx[31:0]};
                   next_xgxs_txc = 8'b11110000;
               end
@@ -688,7 +697,7 @@ end
 
 always @(/*AS*/crc32_d64 or txhfifo_wen or txhfifo_wstatus) begin
 
-    if (txhfifo_wen && txhfifo_wstatus == `TXSTATUS_SOP) begin
+    if (txhfifo_wen && txhfifo_wstatus[`TXSTATUS_SOP]) begin
         crc_data = 32'hffffffff;
     end
     else begin
@@ -698,7 +707,7 @@ always @(/*AS*/crc32_d64 or txhfifo_wen or txhfifo_wstatus) begin
 end
 
 always @(/*AS*/byte_cnt or curr_state_rd or txdfifo_rdata
-         or txdfifo_rempty or txdfifo_rstatus or txhfifo_ren
+         or txdfifo_rempty or txdfifo_ren_d1 or txdfifo_rstatus
          or txhfifo_walmost_full) begin
 
     next_state_rd = curr_state_rd;
@@ -711,98 +720,94 @@ always @(/*AS*/byte_cnt or curr_state_rd or txdfifo_rdata
 
     case (curr_state_rd)
 
-      SM_RD_IDLE: begin
-
-          if (!txdfifo_rempty && !txhfifo_walmost_full) begin
-
-              txdfifo_ren = 1'b1;
-              next_txhfifo_wen = 1'b1;
-              next_state_rd = SM_RD_EQ;
-
-          end
-      
-      end	
-
       SM_RD_EQ: begin
 
-          if (!txhfifo_walmost_full || txhfifo_ren) begin
 
-              txdfifo_ren = 1'b1;
+          //---
+          // If room availabe in hoding fifo and data available in
+          // data fifo, transfer data words. If transmit state machine
+          // is reading from fifo we can assume room will be available.
+
+          if (!txhfifo_walmost_full) begin
+
+              txdfifo_ren = !txdfifo_rempty;
+
+          end
+
+
+          //---
+          // This logic dependent on read during previous cycle.
+
+          if (txdfifo_ren_d1) begin
+
               next_txhfifo_wen = 1'b1;
 
-              if (txdfifo_rempty) begin
+              // On EOP, decide if padding is required for this packet.
 
-                  // If FIFO empty, do a last read and abort
+              if (txdfifo_rstatus[`TXSTATUS_EOP]) begin
 
-                  next_state_rd = SM_RD_IDLE;
-
-              end
-              else if (txdfifo_rstatus == `TXSTATUS_EOP0 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP1 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP2 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP3 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP4 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP5 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP6 ||
-                       txdfifo_rstatus == `TXSTATUS_EOP7) begin
-
-                  if (byte_cnt < 14'd48) begin
+                  if (byte_cnt < 14'd56) begin
 
                       next_txhfifo_wstatus = `TXSTATUS_NONE;
+                      txdfifo_ren = 1'b0;
                       next_state_rd = SM_RD_PAD;
 
                   end
-                  else if (byte_cnt == 14'd48 &&
-                           (txdfifo_rstatus == `TXSTATUS_EOP0 ||
-                            txdfifo_rstatus == `TXSTATUS_EOP1 ||
-                            txdfifo_rstatus == `TXSTATUS_EOP2)) begin
+                  else if (byte_cnt == 14'd56 &&
+                           (txdfifo_rstatus[2:0] == 3'd1 ||
+                            txdfifo_rstatus[2:0] == 3'd2 ||
+                            txdfifo_rstatus[2:0] == 3'd3)) begin
 
                       // Pad up to LANE3, keep the other 4 bytes for crc that will
                       // be inserted by dequeue engine.
                       
-                      next_txhfifo_wstatus = `TXSTATUS_EOP3;
+                      next_txhfifo_wstatus[2:0] = 3'd4;
 
                       // Pad end bytes with zeros.
 
-                      if (txdfifo_rstatus == `TXSTATUS_EOP0)
+                      if (txdfifo_rstatus[2:0] == 3'd1)
                         next_txhfifo_wdata[31:8] = 24'b0;
-                      if (txdfifo_rstatus == `TXSTATUS_EOP1)
+                      if (txdfifo_rstatus[2:0] == 3'd2)
                         next_txhfifo_wdata[31:16] = 16'b0;
-                      if (txdfifo_rstatus == `TXSTATUS_EOP2)
+                      if (txdfifo_rstatus[2:0] == 3'd3)
                         next_txhfifo_wdata[31:24] = 8'b0;
 
-                      next_state_rd = SM_RD_IDLE;
+                      txdfifo_ren = 1'b0;
 
                   end
                   else begin
 
-                      next_state_rd = SM_RD_IDLE;
-
+                      txdfifo_ren = 1'b0;
+                         
                   end
 
               end
-
+        
           end
 
       end
 
       SM_RD_PAD: begin
 
-          if (!txhfifo_walmost_full || txhfifo_ren) begin
+          //---
+          // Pad packet to 64 bytes by writting zeros to holding fifo.
+
+          if (!txhfifo_walmost_full) begin
 
               next_txhfifo_wdata = 64'b0;
               next_txhfifo_wstatus = `TXSTATUS_NONE;
               next_txhfifo_wen = 1'b1;
               
-              if (byte_cnt == 14'd48) begin
+              if (byte_cnt == 14'd56) begin
 
 
                   // Pad up to LANE3, keep the other 4 bytes for crc that will
                   // be inserted by dequeue engine.
 
-                  next_txhfifo_wstatus = `TXSTATUS_EOP3;
+                  next_txhfifo_wstatus[`TXSTATUS_EOP] = 1'b1;
+                  next_txhfifo_wstatus[2:0] = 3'd4;
 
-                  next_state_rd = SM_RD_IDLE;
+                  next_state_rd = SM_RD_EQ;
 
               end
 
@@ -812,7 +817,7 @@ always @(/*AS*/byte_cnt or curr_state_rd or txdfifo_rdata
 
       default:
         begin
-            next_state_rd = SM_RD_IDLE;
+            next_state_rd = SM_RD_EQ;
         end
 
     endcase
@@ -824,7 +829,9 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
 
     if (reset_xgmii_tx_n == 1'b0) begin
 
-        curr_state_rd <= SM_RD_IDLE;
+        curr_state_rd <= SM_RD_EQ;
+
+        txdfifo_ren_d1 <= 1'b0;
 
         txhfifo_wdata <= 64'b0;
         txhfifo_wstatus <= 8'b0;
@@ -833,21 +840,27 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
         byte_cnt <= 14'b0;
 
         shift_crc_data <= 64'b0;
-        shift_crc_eop <= 8'b0;
-        shift_crc_cnt <= 3'b0;
+        shift_crc_eop <= 4'b0;
+        shift_crc_cnt <= 4'b0;
 
     end
     else begin
 
         curr_state_rd <= next_state_rd;
 
+        txdfifo_ren_d1 <= txdfifo_ren;
+
         txhfifo_wdata <= next_txhfifo_wdata;
         txhfifo_wstatus <= next_txhfifo_wstatus;
         txhfifo_wen <= next_txhfifo_wen;
 
-        if (txhfifo_wen) begin
 
-            if (txhfifo_wstatus == `TXSTATUS_SOP) begin
+        //---
+        // Reset byte count on SOP
+        
+        if (next_txhfifo_wen) begin
+
+            if (next_txhfifo_wstatus[`TXSTATUS_SOP]) begin
 
                 byte_cnt <= 14'd8;
 
@@ -860,21 +873,19 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
 
         end
 
+
+        //---
+        // Calculate CRC as data is written to holding fifo. The holding fifo creates
+        // a delay that allow the CRC calculation to complete before the end of the frame
+        // is ready to be transmited.
+
         if (txhfifo_wen) begin
 
             crc32_d64 <= nextCRC32_D64(reverse_64b(txhfifo_wdata), crc_data);
 
         end
 
-        if (txhfifo_wen &&
-            (txhfifo_wstatus == `TXSTATUS_EOP0 ||
-             txhfifo_wstatus == `TXSTATUS_EOP1 ||
-             txhfifo_wstatus == `TXSTATUS_EOP2 ||
-             txhfifo_wstatus == `TXSTATUS_EOP3 ||
-             txhfifo_wstatus == `TXSTATUS_EOP4 ||
-             txhfifo_wstatus == `TXSTATUS_EOP5 ||
-             txhfifo_wstatus == `TXSTATUS_EOP6 ||
-             txhfifo_wstatus == `TXSTATUS_EOP7)) begin
+        if (txhfifo_wen && txhfifo_wstatus[`TXSTATUS_EOP]) begin
 
             // Last bytes calculated 8-bit at a time instead of 64-bit. Start
             // this process at the end of the frame.
@@ -882,11 +893,17 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
             crc32_d8 <= crc32_d64;
 
             shift_crc_data <= txhfifo_wdata;
-            shift_crc_eop <= txhfifo_wstatus;
-            shift_crc_cnt <= 3'd7;
+            shift_crc_cnt <= 4'd9;
+
+            if (txhfifo_wstatus[2:0] == 3'b0) begin
+              shift_crc_eop <= 4'd8;
+            end
+            else begin
+                shift_crc_eop <= {1'b0, txhfifo_wstatus[2:0]};
+            end
 
         end
-        else if (shift_crc_eop != 8'b0) begin
+        else if (shift_crc_eop != 4'b0) begin
 
             // Complete crc calculation 8-bit at a time until finished. This can
             // be 1 to 8 bytes long.
@@ -894,15 +911,25 @@ always @(posedge clk_xgmii_tx or negedge reset_xgmii_tx_n) begin
             crc32_d8 <= nextCRC32_D8(reverse_8b(shift_crc_data[7:0]), crc32_d8);
 
             shift_crc_data <= {8'b0, shift_crc_data[63:8]};
-            shift_crc_eop <= {1'b0, shift_crc_eop[7:1]};
+            shift_crc_eop <= shift_crc_eop - 4'd1;
         
         end
 
-        if (shift_crc_cnt == 3'b0) begin
+
+        //---
+        // Update CRC register at the end of calculation. Always update after 8
+        // cycles for deterministic results, even if a single byte was present in
+        // last data word.
+        
+        if (shift_crc_cnt == 4'b1) begin
+
             crc32_tx <= ~reverse_32b(crc32_d8);
+
         end
         else begin
-            shift_crc_cnt <= shift_crc_cnt - 3'd1;
+
+            shift_crc_cnt <= shift_crc_cnt - 4'd1;
+
         end
 
     end
